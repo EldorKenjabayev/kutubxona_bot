@@ -69,13 +69,47 @@ const handleBookList = async (ctx, page = 1) => {
       return { text: bookNumber.toString(), callback_data: `book_${book.id}` };
     });
     
-    // Raqam tugmalarini qator qilib joylashtirish
+    // Reply markupni yaratish
     const keyboard = [];
-    for (let i = 0; i < bookButtons.length; i += 5) {
-      keyboard.push(bookButtons.slice(i, i + 5));
+    
+    // Kitob raqamlarini 1-qator qilib joylashtirish
+    keyboard.push(bookButtons);
+    
+    // Navigatsiya tugmalari - 2-qator
+    const navButtons = [];
+    if (page > 1) {
+      navButtons.push({ text: '⬅️ Oldingi', callback_data: 'prev_page' });
+    }
+    if (page < totalPages) {
+      navButtons.push({ text: '➡️ Keyingi', callback_data: 'next_page' });
+    }
+    if (navButtons.length > 0) {
+      keyboard.push(navButtons);
     }
     
-    return ctx.reply(message, getPaginationKeyboard(page, totalPages, 'books'));
+    // Asosiy menyuga qaytish - 3-qator
+    keyboard.push([{ text: '🏠 Menyuga qaytish', callback_data: 'back_to_menu' }]);
+    
+    // Xabarni yuborish - callbackQuery bo'lsa edit qilish
+    if (ctx.callbackQuery) {
+      try {
+        // Mavjud xabarni tahrirlash
+        await ctx.editMessageText(message, { 
+          reply_markup: { inline_keyboard: keyboard }
+        });
+      } catch (editError) {
+        logger.error(`Error editing message: ${editError.message}`);
+        // Tahrirlash imkoni bo'lmasa, yangi xabar yuborish
+        await ctx.reply(message, { 
+          reply_markup: { inline_keyboard: keyboard }
+        });
+      }
+    } else {
+      // Yangi xabar yuborish
+      await ctx.reply(message, { 
+        reply_markup: { inline_keyboard: keyboard }
+      });
+    }
   } catch (error) {
     logger.error('Kitoblar ro\'yxatini olishda xatolik:', error);
     return ctx.reply('Kitoblar ro\'yxatini olishda xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring.');
@@ -98,21 +132,58 @@ const handleBookDetails = async (ctx) => {
       return ctx.reply('Kitob topilmadi.');
     }
     
+    // Foydalanuvchining aktiv band qilishlari bor-yo'qligini tekshirish
+    const hasActiveBooking = await db.Booking.findOne({
+      where: {
+        userId: ctx.state.user.id,
+        status: ['booked', 'taken']
+      }
+    });
+    
+    // Kitob band qilinganligini tekshirish
+    const isBookedByOthers = await db.Booking.findOne({
+      where: {
+        bookId: bookId,
+        status: ['booked', 'taken']
+      }
+    });
+    
     // Kitob haqida ma'lumot ko'rsatish
     let message = `📖 "${book.title}"\n\n`;
     message += `👤 Muallif: ${book.author}\n`;
     message += `📚 Nusxalar soni: ${book.copies}\n`;
-    message += `${book.availableCopies > 0 ? '✅ Mavjud' : '❌ Band qilingan'}: ${book.availableCopies}/${book.copies}\n`;
+    
+    // Kitob mavjudligi holati
+    let isAvailable = book.availableCopies > 0 && !hasActiveBooking;
+    
+    if (book.availableCopies > 0) {
+      message += `✅ Mavjud: ${book.availableCopies}/${book.copies}\n\n`;
+    } else {
+      message += `❌ Band qilingan: ${book.availableCopies}/${book.copies}\n\n`;
+    }
+    
+    // Agar foydalanuvchining aktiv band qilishi bo'lsa
+    if (hasActiveBooking) {
+      const activeBook = await db.Book.findByPk(hasActiveBooking.bookId);
+      message += `❗️ Siz allaqachon "${activeBook.title}" kitobini band qilgansiz.\n`;
+      message += `Yangi kitob band qilish uchun avval oldingi kitobni qaytaring yoki band qilishni bekor qiling.\n\n`;
+      isAvailable = false;
+    }
+    
+    // Agar kitob band qilingan bo'lsa
+    if (isBookedByOthers && book.availableCopies === 0) {
+      message += `ℹ️ Bu kitob hozirda barcha nusxalari band qilingan.\n\n`;
+    }
     
     // Agar kitob rasmi bo'lsa, uni yuborish
     if (book.imageId) {
       await ctx.replyWithPhoto(book.imageId, {
         caption: message,
-        reply_markup: getBookActionsKeyboard(book, book.availableCopies > 0)
+        reply_markup: getBookActionsKeyboard(book, isAvailable)
       });
     } else {
       await ctx.reply(message, {
-        reply_markup: getBookActionsKeyboard(book, book.availableCopies > 0)
+        reply_markup: getBookActionsKeyboard(book, isAvailable)
       });
     }
   } catch (error) {

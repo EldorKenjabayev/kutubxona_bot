@@ -3,6 +3,7 @@ const { Markup } = require('telegraf');
 const db = require('../../../database/models');
 const { mainMenuKeyboard } = require('../keyboards/mainMenu');
 const { Op } = require('sequelize');
+const logger = require('../../../utils/logger');
 
 /**
  * Band qilingan kitoblar uchun handler
@@ -32,77 +33,74 @@ const handleBookings = async (ctx) => {
       booking.status === 'returned' || booking.status === 'cancelled'
     );
     
-    let message = '';
-    
     // Agar band qilingan kitoblar bo'lmasa
     if (bookings.length === 0) {
-      message = '📌 Siz hali hech qanday kitob band qilmagansiz.';
-    } else {
-      // Faol band qilishlar
-      if (activeBookings.length > 0) {
-        message += '📌 FAOL BAND QILISHLAR:\n\n';
-        
-        activeBookings.forEach((booking, index) => {
-          const book = booking.book;
-          const bookingDate = new Date(booking.bookedAt).toLocaleDateString('uz-UZ');
-          
-          message += `${index + 1}. "${book.title}" - ${book.author}\n`;
-          message += `   📅 Band qilingan: ${bookingDate}\n`;
-          
-          if (booking.status === 'booked') {
-            const expiresDate = new Date(booking.expiresAt).toLocaleDateString('uz-UZ');
-            message += `   ⏳ Ekspiratsiya vaqti: ${expiresDate}\n`;
-            message += `   ℹ️ Status: Band qilingan (olib ketilmagan)\n`;
-          } else if (booking.status === 'taken') {
-            const returnDate = new Date(booking.returnDate).toLocaleDateString('uz-UZ');
-            message += `   🔄 Qaytarish vaqti: ${returnDate}\n`;
-            message += `   ℹ️ Status: Olib ketilgan\n`;
-          }
-          
-          message += '\n';
-        });
-        
-        // Agar faol band qilish bo'lsa bekor qilish tugmasini ko'rsatish
-        if (activeBookings.length > 0 && activeBookings[0].status === 'booked') {
-          message += 'Agar band qilishni bekor qilmoqchi bo\'lsangiz tugmani bosing:';
-          
-          await ctx.reply(message, {
-            reply_markup: Markup.inlineKeyboard([
-              Markup.button.callback('❌ Band qilishni bekor qilish', `cancel_booking_${activeBookings[0].id}`)
-            ])
-          });
-          return;
-        }
-      }
+      return ctx.reply('📌 Siz hali hech qanday kitob band qilmagansiz.');
+    }
+    
+    // Faol band qilishlar
+    if (activeBookings.length > 0) {
+      let message = '📌 FAOL BAND QILISHLAR:\n\n';
       
-      // Tarixdagi band qilishlar
-      if (historyBookings.length > 0) {
-        if (message) message += '\n\n';
-        message += '📚 O\'QILGAN KITOBLAR TARIXI:\n\n';
+      activeBookings.forEach((booking, index) => {
+        const book = booking.book;
+        const bookingDate = new Date(booking.bookedAt).toLocaleDateString('uz-UZ');
         
-        historyBookings.forEach((booking, index) => {
-          const book = booking.book;
-          const returnedDate = booking.returnedAt ? 
-            new Date(booking.returnedAt).toLocaleDateString('uz-UZ') : 
-            'Qaytarilmagan';
-          
-          message += `${index + 1}. "${book.title}" - ${book.author}\n`;
-          
-          if (booking.status === 'returned') {
-            message += `   ✅ Qaytarilgan: ${returnedDate}\n`;
-          } else if (booking.status === 'cancelled') {
-            message += `   ❌ Bekor qilingan\n`;
-          }
-          
-          message += '\n';
-        });
+        message += `${index + 1}. "${book.title}" - ${book.author}\n`;
+        message += `   📅 Band qilingan: ${bookingDate}\n`;
+        
+        if (booking.status === 'booked') {
+          const expiresDate = new Date(booking.expiresAt).toLocaleDateString('uz-UZ');
+          const expiresTime = new Date(booking.expiresAt).toLocaleTimeString('uz-UZ');
+          message += `   ⏳ Ekspiratsiya vaqti: ${expiresDate} ${expiresTime}\n`;
+          message += `   ℹ️ Status: Band qilingan (olib ketilmagan)\n`;
+        } else if (booking.status === 'taken') {
+          const returnDate = new Date(booking.returnDate).toLocaleDateString('uz-UZ');
+          message += `   🔄 Qaytarish vaqti: ${returnDate}\n`;
+          message += `   ℹ️ Status: Olib ketilgan\n`;
+        }
+      });
+      
+      // Agar faol band qilish bo'lsa va statusı "booked" bo'lsa - bekor qilish tugmasini ko'rsatish
+      if (activeBookings.length > 0 && activeBookings[0].status === 'booked') {
+        // Inline keyboard yaratish - Telegraf v4 syntaxisida
+        const inlineKeyboard = Markup.inlineKeyboard([
+          [Markup.button.callback('❌ Band qilishni bekor qilish', `cancel_booking_${activeBookings[0].id}`)]
+        ]);
+        
+        logger.info(`Creating inline keyboard with cancel button for booking ID: ${activeBookings[0].id}`);
+        
+        await ctx.reply(message, inlineKeyboard);
+      } else {
+        await ctx.reply(message);
       }
     }
     
-    // Xabarni yuborish
-    await ctx.reply(message || 'Band qilingan kitoblar mavjud emas.');
+    // Tarixdagi band qilishlar
+    if (historyBookings.length > 0) {
+      let historyMessage = '📚 O\'QILGAN KITOBLAR TARIXI:\n\n';
+      
+      historyBookings.forEach((booking, index) => {
+        const book = booking.book;
+        const returnedDate = booking.returnedAt ? 
+          new Date(booking.returnedAt).toLocaleDateString('uz-UZ') : 
+          'Qaytarilmagan';
+        
+        historyMessage += `${index + 1}. "${book.title}" - ${book.author}\n`;
+        
+        if (booking.status === 'returned') {
+          historyMessage += `   ✅ Qaytarilgan: ${returnedDate}\n`;
+        } else if (booking.status === 'cancelled') {
+          historyMessage += `   ❌ Bekor qilingan\n`;
+        }
+        
+        historyMessage += '\n';
+      });
+      
+      await ctx.reply(historyMessage);
+    }
   } catch (error) {
-    console.error('Band qilishlarni olishda xatolik:', error);
+    logger.error(`Band qilishlarni olishda xatolik: ${error.message}`);
     return ctx.reply('Band qilishlarni olishda xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring.');
   }
 };
@@ -116,6 +114,7 @@ const handleCancelBooking = async (ctx) => {
     
     // Band qilish ID sini olish
     const bookingId = ctx.match[1];
+    logger.info(`Attempting to cancel booking ID: ${bookingId}`);
     
     // Band qilishni bazadan olish
     const booking = await db.Booking.findOne({
@@ -145,14 +144,18 @@ const handleCancelBooking = async (ctx) => {
       );
       
       await transaction.commit();
+      logger.info(`Successfully cancelled booking ID: ${bookingId}`);
       
       await ctx.reply(`"${booking.book.title}" kitobini band qilish bekor qilindi.`);
+      
+      // Band qilishlar ro'yxatini yangilash
+      return handleBookings(ctx);
     } catch (error) {
       await transaction.rollback();
       throw error;
     }
   } catch (error) {
-    console.error('Band qilishni bekor qilishda xatolik:', error);
+    logger.error(`Band qilishni bekor qilishda xatolik: ${error.message}`);
     return ctx.reply('Band qilishni bekor qilishda xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring.');
   }
 };

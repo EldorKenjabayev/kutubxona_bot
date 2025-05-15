@@ -9,12 +9,12 @@ const { Markup } = require('telegraf');
  * @returns {Object} Inline tugmalar
  */
 const getPaginationKeyboard = (currentPage, totalPages, type = 'books') => {
-  const buttons = [];
+  const keyboard = [];
   
   // Sahifa raqamlari
   const pageButtons = [];
   const maxButtons = 5;
-  let startPage = Math.max(1, currentPage - 2);
+  let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
   let endPage = Math.min(totalPages, startPage + maxButtons - 1);
   
   if (endPage - startPage + 1 < maxButtons) {
@@ -26,7 +26,7 @@ const getPaginationKeyboard = (currentPage, totalPages, type = 'books') => {
   }
   
   if (pageButtons.length > 0) {
-    buttons.push(pageButtons);
+    keyboard.push(pageButtons);
   }
   
   // Oldingi/keyingi sahifa tugmalari
@@ -37,17 +37,19 @@ const getPaginationKeyboard = (currentPage, totalPages, type = 'books') => {
   }
   
   if (currentPage < totalPages) {
-    navigationButtons.push(Markup.button.callback('Keyingi ➡️', 'next_page'));
+    navigationButtons.push(Markup.button.callback('➡️ Keyingi', 'next_page'));
   }
   
   if (navigationButtons.length > 0) {
-    buttons.push(navigationButtons);
+    keyboard.push(navigationButtons);
   }
   
   // Orqaga qaytish tugmasi
-  buttons.push([Markup.button.callback('🔙 Menyuga qaytish', 'back_to_menu')]);
+  keyboard.push([Markup.button.callback('🔙 Menyuga qaytish', 'back_to_menu')]);
   
-  return Markup.inlineKeyboard(buttons);
+  return {
+    inline_keyboard: keyboard
+  };
 };
 
 module.exports = { getPaginationKeyboard };

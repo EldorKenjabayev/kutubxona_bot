@@ -186,19 +186,10 @@ const handleUserDetails = async (ctx) => {
       message += `*Joriy band qilingan kitob:* Yo'q\n`;
     }
     
-    // Tugmalar
-    const keyboard = [];
-    
-    // Foydalanuvchi admin emasligini tekshirish
-    const isAdmin = user.isAdmin;
-    
-    // Admin bo'lmaganlarni admin qilish uchun tugma
-    if (!isAdmin) {
-      keyboard.push([{ text: '👑 Admin qilish', callback_data: `make_admin_${user.id}` }]);
-    }
-    
-    // Orqaga qaytish
-    keyboard.push([{ text: '🔙 Orqaga', callback_data: 'back_to_users' }]);
+    // Tugmalar - faqat orqaga qaytish
+    const keyboard = [
+      [{ text: '🔙 Orqaga', callback_data: 'back_to_users' }]
+    ];
     
     // Xabarni jo'natish
     await ctx.reply(message, {

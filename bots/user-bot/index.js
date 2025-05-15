@@ -63,6 +63,7 @@ bot.action('back_to_menu', (ctx) => {
 // Paginatsiya handerlari
 bot.action(/^books_page_(\d+)$/, (ctx) => handleBookList(ctx, parseInt(ctx.match[1])));
 bot.action(/^search_page_(\d+)$/, (ctx) => handleSearchPagination(ctx, parseInt(ctx.match[1])));
+
 bot.action('prev_page', (ctx) => {
   const currentPage = ctx.session.currentPage || 1;
   if (currentPage > 1) {
@@ -76,6 +77,7 @@ bot.action('prev_page', (ctx) => {
     return ctx.answerCbQuery('Bu birinchi sahifa');
   }
 });
+
 bot.action('next_page', (ctx) => {
   const currentPage = ctx.session.currentPage || 1;
   const totalPages = ctx.session.totalPages || 1;
@@ -85,7 +87,7 @@ bot.action('next_page', (ctx) => {
     if (ctx.session.pageType === 'search') {
       return handleSearchPagination(ctx, currentPage + 1);
     } else {
-      return handleBookList(ctx, currentPage + 1);
+      return handleBookList(ctx, currentPage - 1);
     }
   } else {
     return ctx.answerCbQuery('Bu oxirgi sahifa');
