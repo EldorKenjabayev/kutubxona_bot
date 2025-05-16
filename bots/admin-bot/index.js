@@ -1,4 +1,4 @@
-// bots/admin-bot/index.js
+// bots/admin-bot/index.js (updated with search feature)
 const { Telegraf, session, Scenes } = require('telegraf');
 const config = require('../../config/config');
 const db = require('../../database/models');
@@ -13,10 +13,11 @@ const { handleStart, validateAdmin } = require('./handlers/admin');
 const { handleAddBook } = require('./handlers/addBook');
 const { handleBookList, handleBookDetails, handleBookDelete, handleConfirmBookDelete } = require('./handlers/bookList');
 const { handleBookingDetails, handleConfirmTaken, handleCancelBooking, handleConfirmReturned, handleConfirmNotReturned, handleBookings } = require('./handlers/bookings');
-
-
 const { handleStatistics } = require('./handlers/statistics');
 const { handleUserList, handleUserDetails, handleMakeAdmin } = require('./handlers/users');
+const { handleBlackList, handleRemoveFromBlackList } = require('./handlers/blacklist');
+// Import the search handlers
+const { handleSearch, handleSearchQuery, handleSearchPagination, handleUserActiveBooking } = require('./handlers/searchUsers');
 
 // Klaviaturalar
 const { adminMenuKeyboard } = require('./keyboards/mainMenu');
@@ -66,7 +67,11 @@ bot.hears('📚 Kitoblar ro\'yxati', handleBookList);
 bot.hears('🔒 Band qilingan kitoblar', handleBookings);
 bot.hears('📊 Statistika', handleStatistics);
 bot.hears('👥 Foydalanuvchilar', handleUserList);
-// Action handlerlar qismiga qo'shing
+bot.hears('⛔️ Qora ro\'yxat', handleBlackList);
+// Add search handler for the main menu
+bot.hears('🔍 Foydalanuvchilarni qidirish', handleSearch);
+
+// Action handlerlar
 bot.action(/^booking_(\d+)$/, handleBookingDetails);
 bot.action(/^booking_(\d+)_confirm$/, handleConfirmTaken);
 bot.action(/^booking_(\d+)_cancel$/, handleCancelBooking);
@@ -79,22 +84,38 @@ bot.action(/^book_(\d+)_edit$/, (ctx) => ctx.scene.enter('editBook', { bookId: c
 bot.action(/^book_(\d+)_delete$/, handleBookDelete);
 bot.action(/^confirm_delete_book_(\d+)$/, handleConfirmBookDelete);
 
-bot.action(/^booking_(\d+)_confirm$/, handleConfirmTaken);
-bot.action(/^booking_(\d+)_cancel$/, handleCancelBooking);
+bot.action(/^user_(\d+)$/, async (ctx) => {
+  // First, check if the user has active bookings
+  const userId = ctx.match[1];
+  const hasBookings = await handleUserActiveBooking(ctx, userId);
+  
+  // If user doesn't have active bookings, show user details
+  if (!hasBookings) {
+    return handleUserDetails(ctx);
+  }
+});
 
-bot.action(/^user_(\d+)$/, handleUserDetails);
 bot.action(/^make_admin_(\d+)$/, handleMakeAdmin);
-// BlackList handerlari
-const { handleBlackList, handleRemoveFromBlackList } = require('./handlers/blacklist');
-
-// BlackList tugmasini ushlab olish
-bot.hears('⛔️ Qora ro\'yxat', handleBlackList);
 
 // BlackList callback handerlari
 bot.action(/^blacklist_user_(\d+)$/, handleRemoveFromBlackList);
 bot.action(/^blacklist_page_(\d+)$/, (ctx) => handleBlackList(ctx, parseInt(ctx.match[1])));
 
-// Update pagination handler
+// Add search-related actions
+bot.action('back_to_search', (ctx) => {
+  const currentPage = ctx.session.currentPage || 1;
+  if (ctx.session.pageType === 'search_users') {
+    return handleSearchPagination(ctx, currentPage);
+  } else {
+    return handleSearch(ctx);
+  }
+});
+
+bot.action(/^search_users_page_(\d+)$/, (ctx) => {
+  return handleSearchPagination(ctx, parseInt(ctx.match[1]));
+});
+
+// Update pagination handler to include search
 bot.action('prev_page', (ctx) => {
   const currentPage = ctx.session.currentPage || 1;
   logger.info(`Previous page, current: ${currentPage}, type: ${ctx.session.pageType}`);
@@ -109,6 +130,8 @@ bot.action('prev_page', (ctx) => {
       return handleBookings(ctx, currentPage - 1);
     } else if (ctx.session.pageType === 'blacklist') {
       return handleBlackList(ctx, currentPage - 1);
+    } else if (ctx.session.pageType === 'search_users') {
+      return handleSearchPagination(ctx, currentPage - 1);
     }
   } else {
     return ctx.answerCbQuery('Bu birinchi sahifa');
@@ -130,11 +153,14 @@ bot.action('next_page', (ctx) => {
       return handleBookings(ctx, currentPage + 1);
     } else if (ctx.session.pageType === 'blacklist') {
       return handleBlackList(ctx, currentPage + 1);
+    } else if (ctx.session.pageType === 'search_users') {
+      return handleSearchPagination(ctx, currentPage + 1);
     }
   } else {
     return ctx.answerCbQuery('Bu oxirgi sahifa');
   }
 });
+
 // Orqaga tugmalari
 bot.action('back_to_books', (ctx) => {
   return handleBookList(ctx, ctx.session.currentPage || 1);
@@ -156,59 +182,6 @@ bot.action('back_to_menu', (ctx) => {
   return ctx.reply('Admin menyu:', { reply_markup: adminMenuKeyboard });
 });
 
-// Paginatsiya handerlari
-bot.action(/^books_page_(\d+)$/, (ctx) => {
-  logger.info(`ADMIN BOT: Books page ${ctx.match[1]} selected`);
-  return handleBookList(ctx, parseInt(ctx.match[1]));
-});
-
-bot.action(/^users_page_(\d+)$/, (ctx) => {
-  logger.info(`ADMIN BOT: Users page ${ctx.match[1]} selected`);
-  return handleUserList(ctx, parseInt(ctx.match[1]));
-});
-
-bot.action(/^bookings_page_(\d+)$/, (ctx) => {
-  logger.info(`ADMIN BOT: Bookings page ${ctx.match[1]} selected`);
-  return handleBookings(ctx, parseInt(ctx.match[1]));
-});
-
-bot.action('prev_page', (ctx) => {
-  const currentPage = ctx.session.currentPage || 1;
-  logger.info(`ADMIN BOT: Previous page, current: ${currentPage}, type: ${ctx.session.pageType}`);
-  
-  if (currentPage > 1) {
-    // Sahifa turiga qarab handler tanlash
-    if (ctx.session.pageType === 'books') {
-      return handleBookList(ctx, currentPage - 1);
-    } else if (ctx.session.pageType === 'users') {
-      return handleUserList(ctx, currentPage - 1);
-    } else if (ctx.session.pageType === 'bookings') {
-      return handleBookings(ctx, currentPage - 1);
-    }
-  } else {
-    return ctx.answerCbQuery('Bu birinchi sahifa');
-  }
-});
-
-bot.action('next_page', (ctx) => {
-  const currentPage = ctx.session.currentPage || 1;
-  const totalPages = ctx.session.totalPages || 1;
-  logger.info(`ADMIN BOT: Next page, current: ${currentPage}, total: ${totalPages}, type: ${ctx.session.pageType}`);
-  
-  if (currentPage < totalPages) {
-    // Sahifa turiga qarab handler tanlash
-    if (ctx.session.pageType === 'books') {
-      return handleBookList(ctx, currentPage + 1);
-    } else if (ctx.session.pageType === 'users') {
-      return handleUserList(ctx, currentPage + 1);
-    } else if (ctx.session.pageType === 'bookings') {
-      return handleBookings(ctx, currentPage + 1);
-    }
-  } else {
-    return ctx.answerCbQuery('Bu oxirgi sahifa');
-  }
-});
-
 // Booking related actions
 bot.action('show_booked', (ctx) => {
   ctx.session.bookingType = 'booked';
@@ -224,6 +197,16 @@ bot.action('bookings_main', (ctx) => {
   ctx.session.bookingType = null;
   return handleBookings(ctx);
 });
+
+// Add handler for text messages to handle search queries
+bot.on('text', (ctx, next) => {
+  // Check if in admin search mode
+  if (ctx.session && ctx.session.adminSearchMode) {
+    return handleSearchQuery(ctx);
+  }
+  return next();
+});
+
 // Bot ishga tushirish
 const startAdminBot = async () => {
   try {

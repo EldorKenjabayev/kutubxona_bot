@@ -6,7 +6,8 @@ const adminMenuKeyboard = {
   keyboard: [
     ['➕ Kitob qo\'shish', '📚 Kitoblar ro\'yxati'],
     ['🔒 Band qilingan kitoblar', '📊 Statistika'],
-    ['👥 Foydalanuvchilar', '⛔️ Qora ro\'yxat']
+    ['👥 Foydalanuvchilar', '⛔️ Qora ro\'yxat'],
+    ['🔍 Foydalanuvchilarni qidirish']
   ],
   resize_keyboard: true
 };
