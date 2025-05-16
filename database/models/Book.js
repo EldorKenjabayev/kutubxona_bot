@@ -27,6 +27,12 @@ module.exports = (sequelize) => {
       defaultValue: 1,
       comment: 'Number of available copies'
     },
+    // Check if this field exists, if not add it
+    reminderSent: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment: 'Eslatma yuborilganmi'
+    },
     availableCopies: {
       type: DataTypes.INTEGER,
       comment: 'Number of copies currently available'

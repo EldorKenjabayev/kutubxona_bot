@@ -17,6 +17,11 @@ module.exports = {
     port: process.env.PORT || 3000,
     environment: process.env.NODE_ENV || 'development'
   },
+  // Add to booking configuration if not present
+violations: {
+  maxNotPickedUp: 3, // Kitobni necha marta olmasa qora ro'yxatga tushadi
+  maxNotReturned: 3  // Kitobni necha marta qaytarmasa qora ro'yxatga tushadi
+},
   
   // Band qilish vaqtlari bilan bog'liq konfiguratsiya
   booking: {

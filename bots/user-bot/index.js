@@ -29,11 +29,22 @@ const stage = new Scenes.Stage([registrationScene, bookBookingScene]);
 bot.use(stage.middleware());
 
 // Asosiy middleware: foydalanuvchini tekshirish
+// Asosiy middleware: foydalanuvchini tekshirish
 bot.use(async (ctx, next) => {
   // Foydalanuvchi ma'lumotlarni olish
   if (ctx.from) {
     const user = await db.User.findOne({ where: { telegramId: ctx.from.id.toString() } });
     ctx.state.user = user;
+    
+    // Agar foydalanuvchi ro'yxatdan o'tgan bo'lsa, qora ro'yxatni tekshirish
+    if (user) {
+      const BlackListService = require('../../services/blacklistService');
+      const isBlacklisted = await BlackListService.isUserInBlackList(user.id);
+      
+      if (isBlacklisted) {
+        return ctx.reply('Siz qora ro\'yxatga tushgansiz va botdan foydalana olmaysiz. Iltimos, kutubxona administratoriga murojaat qiling.');
+      }
+    }
   }
   
   return next();
@@ -53,9 +64,16 @@ bot.hears('ℹ️ Ma\'lumot', handleInfo);
 
 // Callback query handlerlar
 bot.action(/^book_(\d+)$/, handleBookDetails);
-bot.action(/^book_(\d+)_reserve$/, (ctx) => ctx.scene.enter('bookBooking', { bookId: ctx.match[1] }));
+// Add this action to the user-bot/index.js
+bot.action(/^book_(\d+)_reserve$/, (ctx) => {
+  // Get book ID
+  const bookId = ctx.match[1];
+  return ctx.scene.enter('bookBooking', { bookId });
+});
 bot.action(/^cancel_booking_(\d+)$/, handleCancelBooking);
-bot.action('back_to_books', handleBookList);
+bot.action('back_to_books', (ctx) => {
+  return handleBookList(ctx, ctx.session.currentPage || 1);
+})
 bot.action('back_to_menu', (ctx) => {
   return ctx.reply('Bosh menyu:', { reply_markup: mainMenuKeyboard });
 });

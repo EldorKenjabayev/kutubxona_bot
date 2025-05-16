@@ -76,16 +76,71 @@ bot.action(/^booking_(\d+)_cancel$/, handleCancelBooking);
 
 bot.action(/^user_(\d+)$/, handleUserDetails);
 bot.action(/^make_admin_(\d+)$/, handleMakeAdmin);
+// BlackList handerlari
+const { handleBlackList, handleRemoveFromBlackList } = require('./handlers/blacklist');
 
+// BlackList tugmasini ushlab olish
+bot.hears('⛔️ Qora ro\'yxat', handleBlackList);
+
+// BlackList callback handerlari
+bot.action(/^blacklist_user_(\d+)$/, handleRemoveFromBlackList);
+bot.action(/^blacklist_page_(\d+)$/, (ctx) => handleBlackList(ctx, parseInt(ctx.match[1])));
+
+// Update pagination handler
+bot.action('prev_page', (ctx) => {
+  const currentPage = ctx.session.currentPage || 1;
+  logger.info(`Previous page, current: ${currentPage}, type: ${ctx.session.pageType}`);
+  
+  if (currentPage > 1) {
+    // Sahifa turiga qarab handler tanlash
+    if (ctx.session.pageType === 'books') {
+      return handleBookList(ctx, currentPage - 1);
+    } else if (ctx.session.pageType === 'users') {
+      return handleUserList(ctx, currentPage - 1);
+    } else if (ctx.session.pageType === 'bookings') {
+      return handleBookings(ctx, currentPage - 1);
+    } else if (ctx.session.pageType === 'blacklist') {
+      return handleBlackList(ctx, currentPage - 1);
+    }
+  } else {
+    return ctx.answerCbQuery('Bu birinchi sahifa');
+  }
+});
+
+bot.action('next_page', (ctx) => {
+  const currentPage = ctx.session.currentPage || 1;
+  const totalPages = ctx.session.totalPages || 1;
+  logger.info(`Next page, current: ${currentPage}, total: ${totalPages}, type: ${ctx.session.pageType}`);
+  
+  if (currentPage < totalPages) {
+    // Sahifa turiga qarab handler tanlash
+    if (ctx.session.pageType === 'books') {
+      return handleBookList(ctx, currentPage + 1);
+    } else if (ctx.session.pageType === 'users') {
+      return handleUserList(ctx, currentPage + 1);
+    } else if (ctx.session.pageType === 'bookings') {
+      return handleBookings(ctx, currentPage + 1);
+    } else if (ctx.session.pageType === 'blacklist') {
+      return handleBlackList(ctx, currentPage + 1);
+    }
+  } else {
+    return ctx.answerCbQuery('Bu oxirgi sahifa');
+  }
+});
 // Orqaga tugmalari
 bot.action('back_to_books', (ctx) => {
-  logger.info('ADMIN BOT: Back to books action');
-  return handleBookList(ctx);
+  return handleBookList(ctx, ctx.session.currentPage || 1);
 });
 
 bot.action('back_to_users', (ctx) => {
   logger.info('ADMIN BOT: Back to users action');
   return handleUserList(ctx);
+});
+
+bot.action('back_to_bookings', (ctx) => {
+  // Go back to the bookings main menu
+  ctx.session.bookingType = null;
+  return handleBookings(ctx);
 });
 
 bot.action('back_to_menu', (ctx) => {
@@ -146,6 +201,21 @@ bot.action('next_page', (ctx) => {
   }
 });
 
+// Booking related actions
+bot.action('show_booked', (ctx) => {
+  ctx.session.bookingType = 'booked';
+  return handleBookings(ctx, 1);
+});
+
+bot.action('show_taken', (ctx) => {
+  ctx.session.bookingType = 'taken';
+  return handleBookings(ctx, 1);
+});
+
+bot.action('bookings_main', (ctx) => {
+  ctx.session.bookingType = null;
+  return handleBookings(ctx);
+});
 // Bot ishga tushirish
 const startAdminBot = async () => {
   try {

@@ -5,7 +5,7 @@ const { Markup } = require('telegraf');
  * Paginatsiya uchun inline tugmalar yaratish
  * @param {number} currentPage - Joriy sahifa
  * @param {number} totalPages - Jami sahifalar soni
- * @param {string} type - Paginatsiya turi (books, search, usw.) 
+ * @param {string} type - Paginatsiya turi (books, search, etc.) 
  * @returns {Object} Inline tugmalar
  */
 const getPaginationKeyboard = (currentPage, totalPages, type = 'books') => {
@@ -44,8 +44,22 @@ const getPaginationKeyboard = (currentPage, totalPages, type = 'books') => {
     keyboard.push(navigationButtons);
   }
   
-  // Orqaga qaytish tugmasi
-  keyboard.push([Markup.button.callback('🔙 Menyuga qaytish', 'back_to_menu')]);
+  // Back link based on the type
+  let backText = '🔙 Menyuga qaytish';
+  let backAction = 'back_to_menu';
+  
+  if (type === 'books' || type === 'search') {
+    backText = '🔙 Menyuga qaytish';
+    backAction = 'back_to_menu';
+  } else if (type === 'bookings') {
+    backText = '🔙 Orqaga';
+    backAction = 'bookings_main';
+  } else if (type === 'blacklist') {
+    backText = '🔙 Menyuga qaytish';
+    backAction = 'back_to_menu';
+  }
+  
+  keyboard.push([Markup.button.callback(backText, backAction)]);
   
   return {
     inline_keyboard: keyboard

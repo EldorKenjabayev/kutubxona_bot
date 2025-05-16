@@ -18,10 +18,36 @@ const handleBookings = async (ctx, page = 1) => {
       await ctx.answerCbQuery();
     }
     
+    // Keyboard yaratish - band qilingan va olib ketilgan kitoblar uchun
+    const mainKeyboard = {
+      inline_keyboard: [
+        [
+          { text: '🔒 Band qilingan kitoblar', callback_data: 'show_booked' },
+          { text: '📖 Olib ketilgan kitoblar', callback_data: 'show_taken' }
+        ],
+        [{ text: '🔙 Menyuga qaytish', callback_data: 'back_to_menu' }]
+      ]
+    };
+    
+    // Agar bu callback emas bo'lsa, asosiy menyuni ko'rsatish
+    if (!ctx.callbackQuery || ctx.callbackQuery.data === 'bookings_main') {
+      return ctx.reply('Band qilingan kitoblar bo\'limiga xush kelibsiz. Nimani ko\'rmoqchisiz?', {
+        reply_markup: mainKeyboard
+      });
+    }
+    
+    // Agar kelgan callback ma'lumotlari band qilingan yoki olib ketilgan kitoblarni ko'rsatish bo'lsa
+    if (!ctx.session.bookingType && ['show_booked', 'show_taken'].includes(ctx.callbackQuery.data)) {
+      ctx.session.bookingType = ctx.callbackQuery.data === 'show_booked' ? 'booked' : 'taken';
+    }
+    
+    // Qaysi turdagi kitoblarni ko'rsatish
+    const bookingType = ctx.session.bookingType || 'booked';
+    
     // Faqat band qilingan yoki olib ketilgan kitoblarni olish
     const totalBookings = await db.Booking.count({
       where: {
-        status: ['booked', 'taken']
+        status: bookingType
       }
     });
     
@@ -29,7 +55,20 @@ const handleBookings = async (ctx, page = 1) => {
     
     // Agar band qilishlar bo'lmasa
     if (totalBookings === 0) {
-      return ctx.reply('Hozircha band qilingan kitoblar yo\'q.');
+      let message = '';
+      if (bookingType === 'booked') {
+        message = 'Hozircha band qilingan kitoblar yo\'q.';
+      } else {
+        message = 'Hozircha olib ketilgan kitoblar yo\'q.';
+      }
+      
+      return ctx.reply(message, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Orqaga', callback_data: 'bookings_main' }]
+          ]
+        }
+      });
     }
     
     // Joriy sahifani saqlash
@@ -40,7 +79,7 @@ const handleBookings = async (ctx, page = 1) => {
     // Sahifa uchun band qilishlarni olish
     const bookings = await db.Booking.findAll({
       where: {
-        status: ['booked', 'taken']
+        status: bookingType
       },
       limit: BOOKINGS_PER_PAGE,
       offset: (page - 1) * BOOKINGS_PER_PAGE,
@@ -54,7 +93,11 @@ const handleBookings = async (ctx, page = 1) => {
     });
     
     // Band qilishlar ro'yxatini ko'rsatish
-    let message = `🔒 Band qilingan kitoblar (${page}/${totalPages}):\n\n`;
+    let messageTitle = bookingType === 'booked' ? 
+      `🔒 Band qilingan kitoblar (${page}/${totalPages}):` : 
+      `📖 Olib ketilgan kitoblar (${page}/${totalPages}):`;
+    
+    let message = `${messageTitle}\n\n`;
     
     bookings.forEach((booking, index) => {
       const bookingNumber = (page - 1) * BOOKINGS_PER_PAGE + index + 1;
@@ -92,19 +135,37 @@ const handleBookings = async (ctx, page = 1) => {
       return { text: bookingNumber.toString(), callback_data: `booking_${booking.id}` };
     });
     
-    // Raqam tugmalarini qator qilib joylashtirish (5 tadan)
+    // Raqam tugmalarini qator qilib joylashtirish
     const keyboard = [];
     for (let i = 0; i < bookingButtons.length; i += 5) {
       keyboard.push(bookingButtons.slice(i, i + 5));
     }
     
-    return ctx.reply(message, getPaginationKeyboard(page, totalPages, 'bookings'));
+    // Navigatsiya tugmalari
+    const navButtons = [];
+    if (page > 1) {
+      navButtons.push({ text: '⬅️ Oldingi', callback_data: 'prev_page' });
+    }
+    if (page < totalPages) {
+      navButtons.push({ text: '➡️ Keyingi', callback_data: 'next_page' });
+    }
+    if (navButtons.length > 0) {
+      keyboard.push(navButtons);
+    }
+    
+    // Orqaga qaytish tugmasi
+    keyboard.push([{ text: '🔙 Orqaga', callback_data: 'bookings_main' }]);
+    
+    return ctx.reply(message, {
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    });
   } catch (error) {
     console.error('Band qilishlarni olishda xatolik:', error);
     return ctx.reply('Band qilishlarni olishda xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring.');
   }
 };
-
 /**
  * Band qilish tafsilotlari uchun handler
  */
@@ -293,4 +354,148 @@ const handleCancelBooking = async (ctx) => {
   }
 };
 
-module.exports = { handleBookings, handleBookingDetails, handleConfirmTaken, handleCancelBooking };
+/**
+ * Kitob qaytarilganini tasdiqlash uchun handler
+ */
+const handleConfirmReturned = async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+    
+    // Band qilish ID sini olish
+    const bookingId = ctx.match[1];
+    
+    // Band qilishni bazadan olish
+    const booking = await db.Booking.findOne({
+      where: { 
+        id: bookingId,
+        status: 'taken'
+      },
+      include: [
+        { model: db.User, as: 'user' },
+        { model: db.Book, as: 'book' }
+      ]
+    });
+    
+    if (!booking) {
+      return ctx.reply('Band qilish topilmadi yoki kitob olib ketilmagan.');
+    }
+    
+    // Transaksiya boshlanishi
+    const transaction = await db.sequelize.transaction();
+    
+    try {
+      // Band qilishni "returned" qilish
+      await booking.update({
+        status: 'returned',
+        returnedAt: new Date()
+      }, { transaction });
+      
+      // Kitob nusxalari sonini oshirish
+      await db.Book.update(
+        { availableCopies: booking.book.availableCopies + 1 },
+        { where: { id: booking.bookId }, transaction }
+      );
+      
+      await transaction.commit();
+      
+      // Foydalanuvchiga xabar yuborish
+      const userBot = require('../../user-bot').bot;
+      await userBot.telegram.sendMessage(booking.user.telegramId, 
+        `✅ Kitob qaytarilgani tasdiqlandi!\n\n`
+        + `"${booking.book.title}" kitobini muvaffaqiyatli qaytardingiz.\n`
+        + `Kitobxonligingiz uchun rahmat!`
+      );
+      
+      await ctx.reply(`"${booking.book.title}" kitobini ${booking.user.firstName} ${booking.user.lastName} qaytarganini muvaffaqiyatli tasdiqladingiz!`);
+      
+      // Band qilishlar ro'yxatiga qaytish
+      return handleBookings(ctx);
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  } catch (error) {
+    console.error('Kitob qaytarilganini tasdiqlashda xatolik:', error);
+    return ctx.reply('Kitob qaytarilganini tasdiqlashda xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring.');
+  }
+};
+
+/**
+ * Kitob qaytarilmaganini tasdiqlash uchun handler
+ */
+const handleConfirmNotReturned = async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+    
+    // Band qilish ID sini olish
+    const bookingId = ctx.match[1];
+    
+    // Band qilishni bazadan olish
+    const booking = await db.Booking.findOne({
+      where: { 
+        id: bookingId,
+        status: 'taken'
+      },
+      include: [
+        { model: db.User, as: 'user' },
+        { model: db.Book, as: 'book' }
+      ]
+    });
+    
+    if (!booking) {
+      return ctx.reply('Band qilish topilmadi yoki kitob olib ketilmagan.');
+    }
+    
+    // Foydalanuvchini olish
+    const user = booking.user;
+    
+    // BlackList service ni chaqirish
+    const BlackListService = require('../../../services/blacklistService');
+    
+    // Foydalanuvchining kitob qaytarmaslik holatlarini tekshirish
+    const notReturnedCount = await BlackListService.getUserViolationCount(user.id, 'not_returned');
+    
+    // Foydalanuvchiga ogohlantirish yuborish
+    const userBot = require('../../user-bot').bot;
+    await userBot.telegram.sendMessage(user.telegramId, 
+      `❗️ OGOHLANTIRISH: Kitobni qaytarishingiz kerak!\n\n`
+      + `Siz "${booking.book.title}" kitobini qaytarish muddati o'tganiga qaramay qaytarmadingiz.\n`
+      + `Bu sizning ${notReturnedCount + 1}-chi ogohlantirishingiz.\n\n`
+      + `❗️ Agar siz kitoblarni 3 marta o'z vaqtida qaytarmasangiz, botdan foydalanish huquqidan mahrum bo'lasiz.\n\n`
+      + `Iltimos, kitobni tezda qaytaring.`
+    );
+    
+    // Agar 3 marta bo'lsa, qora ro'yxatga qo'shish
+    if (notReturnedCount >= 2) {
+      // Qora ro'yxatga qo'shish
+      await BlackListService.addUserToBlackList(user.id, 'not_returned');
+      
+      // Foydalanuvchiga xabar yuborish
+      await userBot.telegram.sendMessage(user.telegramId, 
+        `⛔️ Siz qora ro'yxatga tushirildingiz!\n\n`
+        + `Siz kitoblarni muntazam ravishda o'z vaqtida qaytarmaganligi sababli, botdan foydalanish huquqidan mahrum bo'ldingiz.\n\n`
+        + `Iltimos, kutubxona administratoriga murojaat qiling.`
+      );
+    }
+    
+    await ctx.reply(`"${booking.book.title}" kitobini ${user.firstName} ${user.lastName} qaytarmaganligi qayd qilindi!\n\nFoydalanuvchiga ogohlantirish yuborildi.`);
+    
+    // Band qilishlar ro'yxatiga qaytish
+    return handleBookings(ctx);
+  } catch (error) {
+    console.error('Kitob qaytarilmaganini tasdiqlashda xatolik:', error);
+    return ctx.reply('Kitob qaytarilmaganini tasdiqlashda xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring.');
+  }
+};
+
+
+
+// Add this to the exports at the bottom:
+module.exports = { 
+  handleBookings, 
+  handleBookingDetails, 
+  handleConfirmTaken, 
+  handleCancelBooking,
+  handleConfirmReturned,
+  handleConfirmNotReturned
+};

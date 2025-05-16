@@ -31,6 +31,16 @@ const getBookingActionsKeyboard = (booking) => {
       ],
       [Markup.button.callback('🔙 Orqaga', 'back_to_bookings')]
     ]);
+  } 
+  // Agar status "taken" bo'lsa, qaytarildi va qaytarilmadi tugmalarini ko'rsatish
+  else if (booking.status === 'taken') {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('✅ Qaytarildi', `booking_${booking.id}_returned`),
+        Markup.button.callback('❌ Qaytarilmadi', `booking_${booking.id}_not_returned`)
+      ],
+      [Markup.button.callback('🔙 Orqaga', 'back_to_bookings')]
+    ]);
   }
   
   // Agar boshqa status bo'lsa, faqat orqaga tugmasini ko'rsatish
@@ -38,5 +48,4 @@ const getBookingActionsKeyboard = (booking) => {
     [Markup.button.callback('🔙 Orqaga', 'back_to_bookings')]
   ]);
 };
-
 module.exports = { getBookActionsKeyboard, getBookingActionsKeyboard };
