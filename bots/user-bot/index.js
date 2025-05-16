@@ -82,8 +82,14 @@ bot.action('back_to_menu', (ctx) => {
 bot.action(/^books_page_(\d+)$/, (ctx) => handleBookList(ctx, parseInt(ctx.match[1])));
 bot.action(/^search_page_(\d+)$/, (ctx) => handleSearchPagination(ctx, parseInt(ctx.match[1])));
 
+// bots/user-bot/index.js faylida to'g'rilash
+// Yangi kod uchun
+
+// Paginatsiya handerlari
 bot.action('prev_page', (ctx) => {
   const currentPage = ctx.session.currentPage || 1;
+  logger.info(`Previous page, current: ${currentPage}, type: ${ctx.session.pageType}`);
+  
   if (currentPage > 1) {
     // Sahifa turiga qarab handler tanlash
     if (ctx.session.pageType === 'search') {
@@ -105,7 +111,7 @@ bot.action('next_page', (ctx) => {
     if (ctx.session.pageType === 'search') {
       return handleSearchPagination(ctx, currentPage + 1);
     } else {
-      return handleBookList(ctx, currentPage - 1);
+      return handleBookList(ctx, currentPage + 1); // Bu qatorni tekshiring - currentPage + 1 bo'lishi kerak
     }
   } else {
     return ctx.answerCbQuery('Bu oxirgi sahifa');

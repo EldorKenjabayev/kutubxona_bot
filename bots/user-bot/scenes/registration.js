@@ -26,7 +26,7 @@ const registrationScene = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
   
-  // 3-qadam: Telefon raqam so'rash
+  // 3-qadam: Telefon raqam so'rash (button orqali)
   async (ctx) => {
     if (!ctx.message || !ctx.message.text) {
       await ctx.reply('Iltimos, to\'g\'ri format kiriting. Familiyangizni kiriting:');
@@ -34,27 +34,62 @@ const registrationScene = new Scenes.WizardScene(
     }
     
     ctx.wizard.state.lastName = ctx.message.text;
-    await ctx.reply('Telefon raqamingizni kiriting (masalan: +998901234567):');
+    
+    // Telefon raqamni ulashish tugmasini ko'rsatish
+    await ctx.reply('Telefon raqamingizni kiriting:', {
+      reply_markup: {
+        keyboard: [
+          [{ text: '📱 Telefon raqamni ulashish', request_contact: true }]
+        ],
+        resize_keyboard: true,
+        one_time_keyboard: true
+      }
+    });
+    
     return ctx.wizard.next();
   },
   
-  // 4-qadam: Pasport seriya raqami so'rash
+  // 4-qadam: Telefon raqamni olish va pasport so'rash
   async (ctx) => {
-    if (!ctx.message || !ctx.message.text) {
-      await ctx.reply('Iltimos, to\'g\'ri format kiriting. Telefon raqamingizni kiriting:');
-      return;
+    // Agar contact bo'lsa (telefon raqamni ulashish tugmasi bosilsa)
+    if (ctx.message && ctx.message.contact) {
+      // Telegram user_id va contact user_id bir xil bo'lishini tekshirish
+      if (ctx.message.contact.user_id !== ctx.from.id) {
+        await ctx.reply('Iltimos, o\'zingizni telefon raqamingizni ulashing.');
+        return;
+      }
+      
+      ctx.wizard.state.phoneNumber = ctx.message.contact.phone_number;
+      
+      // Pasport raqam so'rash
+      await ctx.reply('Pasport seriya raqamingizni kiriting (masalan: AA1234567):', {
+        reply_markup: { remove_keyboard: true }
+      });
+      
+      return ctx.wizard.next();
+    } 
+    // Agar text bo'lsa (foydalanuvchi qo'lda kiritgan bo'lsa)
+    else if (ctx.message && ctx.message.text) {
+      // Telefon raqam validatsiyasi
+      const phoneRegex = /^\+?[0-9]{10,13}$/;
+      if (!phoneRegex.test(ctx.message.text.replace(/\s/g, ''))) {
+        await ctx.reply('Noto\'g\'ri telefon raqam formati. Iltimos "Telefon raqamni ulashish" tugmasini bosing yoki raqamni quyidagi formatda kiriting: +998901234567');
+        return;
+      }
+      
+      ctx.wizard.state.phoneNumber = ctx.message.text;
+      
+      // Pasport raqam so'rash
+      await ctx.reply('Pasport seriya raqamingizni kiriting (masalan: AA1234567):', {
+        reply_markup: { remove_keyboard: true }
+      });
+      
+      return ctx.wizard.next();
     }
     
-    // Telefon raqam validatsiyasi
-    const phoneRegex = /^\+?[0-9]{10,13}$/;
-    if (!phoneRegex.test(ctx.message.text.replace(/\s/g, ''))) {
-      await ctx.reply('Noto\'g\'ri telefon raqam formati. Iltimos qaytadan kiriting (masalan: +998901234567):');
-      return;
-    }
-    
-    ctx.wizard.state.phoneNumber = ctx.message.text;
-    await ctx.reply('Pasport seriya raqamingizni kiriting (masalan: AA1234567):');
-    return ctx.wizard.next();
+    // Noto'g'ri format (na contact, na text)
+    await ctx.reply('Iltimos, "Telefon raqamni ulashish" tugmasini bosing yoki raqamni quyidagi formatda kiriting: +998901234567');
+    return;
   },
   
   // 5-qadam: Ro'yxatdan o'tish
@@ -89,15 +124,9 @@ const registrationScene = new Scenes.WizardScene(
       // Ro'yxatdan o'tildi
       await ctx.reply(`Tabriklaymiz, ${ctx.wizard.state.firstName}! Siz muvaffaqiyatli ro'yxatdan o'tdingiz.`);
       
-      // Asosiy menyuni ko'rsatish - Telegraf v4 uchun
+      // Asosiy menyuni ko'rsatish
       await ctx.reply('Kutubxona botdan foydalanishingiz mumkin:', {
-        reply_markup: {
-          keyboard: [
-            ['📚 Kitoblar ro\'yxati', '📌 Band qilingan kitoblar'],
-            ['🔍 Qidiruv', 'ℹ️ Ma\'lumot']
-          ],
-          resize_keyboard: true
-        }
+        reply_markup: mainMenuKeyboard
       });
       
       return ctx.scene.leave();
@@ -119,7 +148,9 @@ const registrationScene = new Scenes.WizardScene(
 
 // Scenedan chiqish handeri
 registrationScene.command('cancel', async (ctx) => {
-  await ctx.reply('Ro\'yxatdan o\'tish bekor qilindi.');
+  await ctx.reply('Ro\'yxatdan o\'tish bekor qilindi.', {
+    reply_markup: { remove_keyboard: true }
+  });
   return ctx.scene.leave();
 });
 
