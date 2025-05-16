@@ -19,7 +19,7 @@ const { handleInfo } = require('./handlers/info');
 const { mainMenuKeyboard } = require('./keyboards/mainMenu');
 
 // Bot yaratish
-const bot = new Telegraf(config.userBot.token);
+const bot = new Telegraf(config.userBot.token, { webhookReply: false });
 
 // Middleware'lar
 bot.use(session());
@@ -131,10 +131,23 @@ bot.on('text', (ctx, next) => {
 // Bot ishga tushirish
 const startUserBot = async () => {
   try {
-    await bot.launch();
+    // Токен для запуска
+    const token = config.userBot.token || process.env.USER_BOT_TOKEN;
+    if (!token) {
+      throw new Error("USER_BOT_TOKEN topilmadi!");
+    }
+    
+    logger.info(`USER BOT: Ishlatilayotgan token: ${token.substring(0, 5)}...${token.substring(token.length - 5)}`);
+    
+    await bot.launch({
+      allowedUpdates: ['message', 'callback_query', 'my_chat_member'],
+      dropPendingUpdates: true
+    });
     logger.info(`${config.userBot.name} muvaffaqiyatli ishga tushdi!`);
+    return true;
   } catch (error) {
     logger.error('Botni ishga tushirishda xatolik:', error);
+    throw error;
   }
 };
 

@@ -1,8 +1,9 @@
-// bots/admin-bot/handlers/admin.js
+// bots/admin-bot/handlers/admin.js - To'g'rilandi
 const { Markup } = require('telegraf');
 const db = require('../../../database/models');
 const { adminMenuKeyboard } = require('../keyboards/mainMenu');
 const logger = require('../../../utils/logger');
+const config = require('../../../config/config');
 
 /**
  * /start komandasi uchun handler
@@ -83,9 +84,6 @@ const handleMakeAdmin = async (ctx) => {
     } catch (notifyError) {
       logger.error(`Foydalanuvchiga admin qilingani haqida xabar yuborishda xatolik: ${notifyError.message}`);
     }
-    
-    // Foydalanuvchi ma'lumotlarini qaytadan ko'rsatish
-    return handleUserDetails(ctx);
   } catch (error) {
     logger.error('Admin qilishda xatolik:', error);
     return ctx.reply('Admin qilishda xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring.');

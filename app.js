@@ -1,16 +1,24 @@
-// app.js - Loglarni qo'shish uchun yangilangan
+// app.js - Xatoliklarni tuzatish uchun yangilangan versiya
 require('dotenv').config();
 const express = require('express');
 const morgan = require('morgan');
+const fs = require('fs');
+const path = require('path');
 const db = require('./database/models');
-const { startUserBot } = require('./bots/user-bot');
-const { startAdminBot } = require('./bots/admin-bot');
-const { startBookingJobs } = require('./jobs/bookingExpirationJob');
 const logger = require('./utils/logger');
 const config = require('./config/config');
 
 // Express serverini yaratish
 const app = express();
+
+// Log direktoriyasini tekshirish va yaratish
+const logDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir);
+}
+
+// Konfiguratsiya ma'lumotlarini global o'zgaruvchiga saqlash
+global.config = config;
 
 // Middleware
 app.use(express.json());
@@ -25,10 +33,14 @@ app.get('/', (req, res) => {
 // Server ishga tushirish
 const PORT = config.server.port;
 
-// Konfiguratsiya printlash (debug uchun)
-logger.info("USER_BOT_TOKEN length: " + (process.env.USER_BOT_TOKEN ? process.env.USER_BOT_TOKEN.length : 'undefined'));
-logger.info("ADMIN_BOT_TOKEN length: " + (process.env.ADMIN_BOT_TOKEN ? process.env.ADMIN_BOT_TOKEN.length : 'undefined'));
+// Bot tokenlarini tekshirish
+logger.info("USER_BOT_TOKEN uzunligi: " + (process.env.USER_BOT_TOKEN ? process.env.USER_BOT_TOKEN.length : 'aniqlanmadi'));
+logger.info("ADMIN_BOT_TOKEN uzunligi: " + (process.env.ADMIN_BOT_TOKEN ? process.env.ADMIN_BOT_TOKEN.length : 'aniqlanmadi'));
 logger.info("Ma'lumotlar bazasi: " + process.env.DB_NAME);
+
+// Botlar config-dagi tokenlarini tekshirish 
+logger.info("CONFIG USER_BOT_TOKEN mavjud: " + (config.userBot.token ? 'ha' : 'yo\'q'));
+logger.info("CONFIG ADMIN_BOT_TOKEN mavjud: " + (config.adminBot.token ? 'ha' : 'yo\'q'));
 
 // Ma'lumotlar bazasini sinxronlash va serverni ishga tushirish
 const startServer = async () => {
@@ -45,6 +57,7 @@ const startServer = async () => {
     // User botni ishga tushirish
     try {
       logger.info("User botni ishga tushirish boshlanmoqda...");
+      const { startUserBot } = require('./bots/user-bot');
       await startUserBot();
       logger.info("User bot muvaffaqiyatli ishga tushdi!");
     } catch (userBotError) {
@@ -55,8 +68,26 @@ const startServer = async () => {
     // Admin botni ishga tushirish
     try {
       logger.info("Admin botni ishga tushirish boshlanmoqda...");
-      await startAdminBot();
-      logger.info("Admin bot muvaffaqiyatli ishga tushdi!");
+      const { startAdminBot } = require('./bots/admin-bot');
+      
+      // MUHIM: Admin botga shunday yo'naltiramiz
+      if (!startAdminBot) {
+        throw new Error("startAdminBot funksiyasi topilmadi! ./bots/admin-bot dan to'g'ri export qilinganiga ishonch hosil qiling.");
+      }
+      
+      // Admin bot tokenini tekshirish
+      if (!process.env.ADMIN_BOT_TOKEN && !config.adminBot.token) {
+        logger.error("ADMIN_BOT_TOKEN aniqlanmadi! Na .env faylida, na config.js faylida.");
+        throw new Error("ADMIN_BOT_TOKEN aniqlanmadi!");
+      }
+      
+      // Botni ishga tushirishga urinish
+      const adminBotStarted = await startAdminBot();
+      if (adminBotStarted) {
+        logger.info("Admin bot muvaffaqiyatli ishga tushdi!");
+      } else {
+        logger.error("Admin bot ishga tushmadi, lekin xatolik chiqmadi");
+      }
     } catch (adminBotError) {
       logger.error("Admin botni ishga tushirishda xatolik: " + adminBotError.message);
       logger.error(adminBotError.stack);
@@ -64,10 +95,13 @@ const startServer = async () => {
     
     // Band qilish jobs larni ishga tushirish
     try {
+      logger.info("Band qilish ishlarini tekshirish jarayoni ishga tushirish boshlanmoqda...");
+      const { startBookingJobs } = require('./jobs/bookingExpirationJob');
       startBookingJobs();
       logger.info("Band qilish ishlarini tekshirish jarayoni ishga tushdi");
     } catch (jobsError) {
       logger.error("Band qilish ishlarini tekshirish jarayonini ishga tushirishda xatolik: " + jobsError.message);
+      logger.error(jobsError.stack);
     }
     
   } catch (error) {
@@ -89,6 +123,12 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
   logger.info('Server to\'xtatilmoqda (SIGTERM)');
   process.exit(0);
+});
+
+// Global xatoliklarni tutib olish
+process.on('uncaughtException', (err) => {
+  logger.error('Kutilmagan xatolik: ' + err.message);
+  logger.error(err.stack);
 });
 
 module.exports = app;
