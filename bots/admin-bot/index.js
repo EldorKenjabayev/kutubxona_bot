@@ -12,7 +12,9 @@ const { editBookScene } = require('./scenes/editBook');
 const { handleStart, validateAdmin } = require('./handlers/admin');
 const { handleAddBook } = require('./handlers/addBook');
 const { handleBookList, handleBookDetails, handleBookDelete, handleConfirmBookDelete } = require('./handlers/bookList');
-const { handleBookings, handleConfirmTaken, handleCancelBooking } = require('./handlers/bookings');
+const { handleBookingDetails, handleConfirmTaken, handleCancelBooking, handleConfirmReturned, handleConfirmNotReturned, handleBookings } = require('./handlers/bookings');
+
+
 const { handleStatistics } = require('./handlers/statistics');
 const { handleUserList, handleUserDetails, handleMakeAdmin } = require('./handlers/users');
 
@@ -64,6 +66,12 @@ bot.hears('📚 Kitoblar ro\'yxati', handleBookList);
 bot.hears('🔒 Band qilingan kitoblar', handleBookings);
 bot.hears('📊 Statistika', handleStatistics);
 bot.hears('👥 Foydalanuvchilar', handleUserList);
+// Action handlerlar qismiga qo'shing
+bot.action(/^booking_(\d+)$/, handleBookingDetails);
+bot.action(/^booking_(\d+)_confirm$/, handleConfirmTaken);
+bot.action(/^booking_(\d+)_cancel$/, handleCancelBooking);
+bot.action(/^booking_(\d+)_returned$/, handleConfirmReturned);
+bot.action(/^booking_(\d+)_not_returned$/, handleConfirmNotReturned);
 
 // Callback query handlerlar
 bot.action(/^book_(\d+)$/, handleBookDetails);

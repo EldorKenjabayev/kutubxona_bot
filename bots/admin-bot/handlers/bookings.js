@@ -1,10 +1,10 @@
-// bots/admin-bot/handlers/bookings.js
 const { Markup } = require('telegraf');
 const db = require('../../../database/models');
 const { getPaginationKeyboard } = require('../../user-bot/keyboards/pagination');
 const { getBookingActionsKeyboard } = require('../keyboards/bookActions');
 const { Op } = require('sequelize');
 const { addDays } = require('../../../utils/dateUtils');
+const logger = require('../../../utils/logger');
 
 // Sahifa boshiga nechta band qilish ko'rsatish
 const BOOKINGS_PER_PAGE = 5;
@@ -175,6 +175,7 @@ const handleBookingDetails = async (ctx) => {
     
     // Band qilish ID sini olish
     const bookingId = ctx.match[1];
+    logger.info(`BookingDetails: Booking ID ${bookingId} tanlanmoqda`);
     
     // Band qilishni bazadan olish
     const booking = await db.Booking.findOne({
@@ -211,16 +212,35 @@ const handleBookingDetails = async (ctx) => {
       message += `📅 Olib ketilgan: ${takenDate}\n`;
       message += `🔄 Qaytarish: ${returnDate}\n`;
       message += `ℹ️ Status: Olib ketilgan\n\n`;
-      message += `Bu kitob band qilingani tasdiqlangan.`;
+      message += `Kitob qaytarilganini tasdiqlaysizmi?`;
     } else {
       message += `ℹ️ Status: ${booking.status}\n`;
     }
     
+    // Klaviatura tugmalarini yaratish
+    const keyboard = [];
+    
+    if (booking.status === 'booked') {
+      keyboard.push([
+        { text: '✅ Tasdiqlash', callback_data: `booking_${booking.id}_confirm` },
+        { text: '❌ Bekor qilish', callback_data: `booking_${booking.id}_cancel` }
+      ]);
+    } else if (booking.status === 'taken') {
+      keyboard.push([
+        { text: '✅ Qaytarildi', callback_data: `booking_${booking.id}_returned` },
+        { text: '❌ Qaytarilmadi', callback_data: `booking_${booking.id}_not_returned` }
+      ]);
+    }
+    
+    keyboard.push([{ text: '🔙 Orqaga', callback_data: 'back_to_bookings' }]);
+    
+    logger.info(`BookingDetails: Keyboard: ${JSON.stringify(keyboard)}`);
+    
     await ctx.reply(message, {
-      reply_markup: getBookingActionsKeyboard(booking)
+      reply_markup: { inline_keyboard: keyboard }
     });
   } catch (error) {
-    console.error('Band qilish tafsilotlarini olishda xatolik:', error);
+    logger.error('Band qilish tafsilotlarini olishda xatolik:', error);
     return ctx.reply('Band qilish tafsilotlarini olishda xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring.');
   }
 };
@@ -234,6 +254,7 @@ const handleConfirmTaken = async (ctx) => {
     
     // Band qilish ID sini olish
     const bookingId = ctx.match[1];
+    logger.info(`ConfirmTaken: Booking ID ${bookingId} tasdiqlanmoqda`);
     
     // Band qilishni bazadan olish
     const booking = await db.Booking.findOne({
@@ -267,14 +288,18 @@ const handleConfirmTaken = async (ctx) => {
       await transaction.commit();
       
       // Foydalanuvchiga xabar yuborish
-      const userBot = require('../../user-bot').bot;
-      await userBot.telegram.sendMessage(booking.user.telegramId, 
-        `📚 Kitob olish tasdiqlandi!\n\n`
-        + `"${booking.book.title}" kitobini olganingiz tasdiqlandi.\n`
-        + `📅 Olgan sana: ${now.toLocaleDateString('uz-UZ')}\n`
-        + `🔄 Qaytarish sana: ${new Date(booking.returnDate).toLocaleDateString('uz-UZ')}\n\n`
-        + `Iltimos, kitobni o'z vaqtida qaytaring.`
-      );
+      try {
+        const userBot = require('../../user-bot').bot;
+        await userBot.telegram.sendMessage(booking.user.telegramId, 
+          `📚 Kitob olish tasdiqlandi!\n\n`
+          + `"${booking.book.title}" kitobini olganingiz tasdiqlandi.\n`
+          + `📅 Olgan sana: ${now.toLocaleDateString('uz-UZ')}\n`
+          + `🔄 Qaytarish sana: ${new Date(booking.returnDate).toLocaleDateString('uz-UZ')}\n\n`
+          + `Iltimos, kitobni o'z vaqtida qaytaring.`
+        );
+      } catch (userBotError) {
+        logger.error(`Foydalanuvchiga xabar yuborishda xatolik: ${userBotError.message}`);
+      }
       
       await ctx.reply(`"${booking.book.title}" kitobini ${booking.user.firstName} ${booking.user.lastName} olib ketganini muvaffaqiyatli tasdiqladingiz!`);
       
@@ -285,7 +310,7 @@ const handleConfirmTaken = async (ctx) => {
       throw error;
     }
   } catch (error) {
-    console.error('Kitob olib ketilganini tasdiqlashda xatolik:', error);
+    logger.error('Kitob olib ketilganini tasdiqlashda xatolik:', error);
     return ctx.reply('Kitob olib ketilganini tasdiqlashda xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring.');
   }
 };
