@@ -1,7 +1,9 @@
-// bots/admin-bot/handlers/bookList.js
+// bots/admin-bot/handlers/bookList.js (yangilangan)
 const db = require('../../../database/models');
 const { adminMenuKeyboard } = require('../keyboards/mainMenu');
 const logger = require('../../../utils/logger');
+const config = require('../../../config/config');
+const { deleteImage } = require('../../../utils/fileStorage');
 
 // Sahifa boshiga nechta kitob ko'rsatish
 const BOOKS_PER_PAGE = 5;
@@ -159,16 +161,64 @@ const handleBookDetails = async (ctx) => {
     
     logger.info(`BOOKDETAILS: Sending details for "${book.title}"`);
     
-    // Agar kitob rasmi bo'lsa, uni yuborish
-    if (book.imageId) {
-      logger.info(`BOOKDETAILS: Book has image, ID: ${book.imageId}`);
-      await ctx.replyWithPhoto(book.imageId, {
-        caption: message,
-        reply_markup: keyboard
-      });
-    } else {
-      logger.info(`BOOKDETAILS: Book has no image`);
-      await ctx.reply(message, {
+    try {
+      // Rasmni ko'rsatish usulini tanlash
+      let photoSource = null;
+      let photoError = false;
+      
+      if (book.imageName) {
+        // 1. Avval server orqali rasmni ko'rsatishga urinish
+        const imageUrl = `http://${config.server.host || 'localhost'}:${config.server.port}/images/${book.imageName}`;
+        logger.info(`BOOKDETAILS: Trying image from URL: ${imageUrl}`);
+        
+        try {
+          photoSource = { url: imageUrl };
+        } catch (err) {
+          logger.error(`BOOKDETAILS: Could not load image URL: ${err.message}`);
+          photoError = true;
+        }
+      } 
+      
+      if (!photoSource && book.imageId) {
+        // 2. Agar server orqali bo'lmasa, Telegram ID orqali ko'rsatishga urinish
+        logger.info(`BOOKDETAILS: Trying image from Telegram ID: ${book.imageId}`);
+        
+        try {
+          photoSource = book.imageId;
+        } catch (err) {
+          logger.error(`BOOKDETAILS: Could not load Telegram image: ${err.message}`);
+          photoError = true;
+        }
+      }
+      
+      if (!photoSource && !photoError) {
+        // 3. Agar hech qanday rasm yo'q bo'lsa, no-image ko'rsatish
+        const noImageUrl = `http://${config.server.host || 'localhost'}:${config.server.port}/images/no-image.jpg`;
+        logger.info(`BOOKDETAILS: No image found, trying to show no-image: ${noImageUrl}`);
+        
+        try {
+          photoSource = { url: noImageUrl };
+        } catch (err) {
+          logger.error(`BOOKDETAILS: Could not load no-image: ${err.message}`);
+          photoError = true;
+        }
+      }
+      
+      // Rasmni ko'rsatish
+      if (photoSource && !photoError) {
+        await ctx.replyWithPhoto(photoSource, {
+          caption: message,
+          reply_markup: keyboard
+        });
+      } else {
+        // Agar rasm ko'rsatib bo'lmasa, faqat xabarni yuborish
+        await ctx.reply(message + '\n\n⚠️ Rasmni ko\'rsatishda xatolik yuz berdi.', {
+          reply_markup: keyboard
+        });
+      }
+    } catch (error) {
+      logger.error(`BOOKDETAILS: Error displaying image: ${error.message}`);
+      await ctx.reply(message + '\n\n⚠️ Rasmni ko\'rsatishda xatolik yuz berdi.', {
         reply_markup: keyboard
       });
     }
@@ -241,6 +291,16 @@ const handleConfirmBookDelete = async (ctx) => {
     const book = await db.Book.findByPk(bookId);
     if (!book) {
       return ctx.answerCbQuery('Kitob topilmadi!');
+    }
+    
+    // Agar kitobning rasmi bo'lsa, o'chiramiz
+    if (book.imageName) {
+      try {
+        await deleteImage(book.imageName);
+        logger.info(`BOOKDELETECONFIRM: Deleted image: ${book.imageName}`);
+      } catch (imageError) {
+        logger.error(`BOOKDELETECONFIRM: Error deleting image: ${imageError.message}`);
+      }
     }
     
     // Kitobni o'chirish

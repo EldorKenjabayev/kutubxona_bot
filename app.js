@@ -1,4 +1,4 @@
-// app.js - Xatoliklarni tuzatish uchun yangilangan versiya
+// app.js (yangilangan - bot ishga tushirish qismi olib tashlangan)
 require('dotenv').config();
 const express = require('express');
 const morgan = require('morgan');
@@ -7,6 +7,7 @@ const path = require('path');
 const db = require('./database/models');
 const logger = require('./utils/logger');
 const config = require('./config/config');
+const fileUpload = require('express-fileupload');
 
 // Express serverini yaratish
 const app = express();
@@ -17,6 +18,23 @@ if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir);
 }
 
+// Uploads direktoriyasini tekshirish va yaratish
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
+
+const uploadsImagesDir = path.join(__dirname, 'uploads/images');
+if (!fs.existsSync(uploadsImagesDir)) {
+  fs.mkdirSync(uploadsImagesDir);
+}
+
+// Static papkani yaratish
+const staticDir = path.join(__dirname, 'static');
+if (!fs.existsSync(staticDir)) {
+  fs.mkdirSync(staticDir);
+}
+
 // Konfiguratsiya ma'lumotlarini global o'zgaruvchiga saqlash
 global.config = config;
 
@@ -24,6 +42,16 @@ global.config = config;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+app.use(fileUpload({
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  abortOnLimit: true
+}));
+
+// Static papka
+app.use('/static', express.static(path.join(__dirname, 'static')));
+
+// Image routes
+app.use('/images', require('./routes/imageRoutes'));
 
 // Asosiy rout
 app.get('/', (req, res) => {
@@ -54,55 +82,8 @@ const startServer = async () => {
       logger.info(`Server ${PORT} portda ishga tushdi!`);
     });
     
-    // User botni ishga tushirish
-    try {
-      logger.info("User botni ishga tushirish boshlanmoqda...");
-      const { startUserBot } = require('./bots/user-bot');
-      await startUserBot();
-      logger.info("User bot muvaffaqiyatli ishga tushdi!");
-    } catch (userBotError) {
-      logger.error("User botni ishga tushirishda xatolik: " + userBotError.message);
-      logger.error(userBotError.stack);
-    }
-    
-    // Admin botni ishga tushirish
-    try {
-      logger.info("Admin botni ishga tushirish boshlanmoqda...");
-      const { startAdminBot } = require('./bots/admin-bot');
-      
-      // MUHIM: Admin botga shunday yo'naltiramiz
-      if (!startAdminBot) {
-        throw new Error("startAdminBot funksiyasi topilmadi! ./bots/admin-bot dan to'g'ri export qilinganiga ishonch hosil qiling.");
-      }
-      
-      // Admin bot tokenini tekshirish
-      if (!process.env.ADMIN_BOT_TOKEN && !config.adminBot.token) {
-        logger.error("ADMIN_BOT_TOKEN aniqlanmadi! Na .env faylida, na config.js faylida.");
-        throw new Error("ADMIN_BOT_TOKEN aniqlanmadi!");
-      }
-      
-      // Botni ishga tushirishga urinish
-      const adminBotStarted = await startAdminBot();
-      if (adminBotStarted) {
-        logger.info("Admin bot muvaffaqiyatli ishga tushdi!");
-      } else {
-        logger.error("Admin bot ishga tushmadi, lekin xatolik chiqmadi");
-      }
-    } catch (adminBotError) {
-      logger.error("Admin botni ishga tushirishda xatolik: " + adminBotError.message);
-      logger.error(adminBotError.stack);
-    }
-    
-    // Band qilish jobs larni ishga tushirish
-    try {
-      logger.info("Band qilish ishlarini tekshirish jarayoni ishga tushirish boshlanmoqda...");
-      const { startBookingJobs } = require('./jobs/bookingExpirationJob');
-      startBookingJobs();
-      logger.info("Band qilish ishlarini tekshirish jarayoni ishga tushdi");
-    } catch (jobsError) {
-      logger.error("Band qilish ishlarini tekshirish jarayonini ishga tushirishda xatolik: " + jobsError.message);
-      logger.error(jobsError.stack);
-    }
+    // ⚠️ BOT ISHGA TUSHIRISH KODI OLIB TASHLANDI ⚠️
+    // User bot va Admin bot endi alohida ishga tushirilishi kerak
     
   } catch (error) {
     logger.error(`Serverni ishga tushirishda xatolik: ${error.message}`);

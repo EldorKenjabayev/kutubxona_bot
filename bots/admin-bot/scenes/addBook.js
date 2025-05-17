@@ -1,8 +1,9 @@
-// bots/admin-bot/scenes/addBook.js
+// bots/admin-bot/scenes/addBook.js (xato tuzatilgan)
 const { Scenes } = require('telegraf');
 const db = require('../../../database/models');
 const { adminMenuKeyboard } = require('../keyboards/mainMenu');
 const logger = require('../../../utils/logger');
+const { downloadAndSaveTelegramImage } = require('../../../utils/fileStorage');
 
 // Kitob qo'shish scenesi
 const addBookScene = new Scenes.WizardScene(
@@ -70,7 +71,6 @@ const addBookScene = new Scenes.WizardScene(
       };
       
       logger.info("ADDBOOK SCENE: Sending image request with skip button");
-      logger.info("Keyboard object: " + JSON.stringify(keyboard));
       
       // To'g'ridan-to'g'ri Telegram API yordamida xabar yuborish
       await ctx.telegram.sendMessage(ctx.chat.id, 'Kitob rasmini yuborishingiz mumkin (ixtiyoriy). Agar rasm yubormoqchi bo\'lmasangiz, tugmani bosing:', keyboard);
@@ -102,7 +102,8 @@ const addBookScene = new Scenes.WizardScene(
             author: ctx.wizard.state.author,
             copies: ctx.wizard.state.copies,
             availableCopies: ctx.wizard.state.copies,
-            imageId: null
+            imageId: null,
+            imageName: null
           });
           
           logger.info(`ADDBOOK SCENE: Book created without image, ID: ${newBook.id}`);
@@ -127,8 +128,12 @@ const addBookScene = new Scenes.WizardScene(
     // Agar rasm yuborilgan bo'lsa
     else if (ctx.message && ctx.message.photo) {
       try {
-        const imageId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
-        logger.info(`ADDBOOK SCENE: Image received, ID: ${imageId}`);
+        const telegramFileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+        logger.info(`ADDBOOK SCENE: Image received, Telegram ID: ${telegramFileId}`);
+        
+        // Rasmni yuklab olish va saqlash - bot obyektini uzatamiz
+        const imageName = await downloadAndSaveTelegramImage(telegramFileId, ctx.telegram);
+        logger.info(`ADDBOOK SCENE: Image saved with name: ${imageName}`);
         
         // Kitobni saqlash
         const newBook = await db.Book.create({
@@ -136,7 +141,8 @@ const addBookScene = new Scenes.WizardScene(
           author: ctx.wizard.state.author,
           copies: ctx.wizard.state.copies,
           availableCopies: ctx.wizard.state.copies,
-          imageId: imageId
+          imageId: telegramFileId, // Compatibility uchun
+          imageName: imageName     // Yangi field
         });
         
         logger.info(`ADDBOOK SCENE: Book created with image, ID: ${newBook.id}`);
@@ -188,7 +194,8 @@ addBookScene.action('skip_image', async (ctx) => {
       author: ctx.wizard.state.author,
       copies: ctx.wizard.state.copies,
       availableCopies: ctx.wizard.state.copies,
-      imageId: null
+      imageId: null,
+      imageName: null
     });
     
     logger.info(`ADDBOOK SCENE: Book created from action handler, ID: ${newBook.id}`);

@@ -1,8 +1,9 @@
-// bots/user-bot/handlers/bookList.js
+// bots/user-bot/handlers/bookList.js (yangilangan)
 const db = require('../../../database/models');
 const { getPaginationKeyboard } = require('../keyboards/pagination');
 const { getBookActionsKeyboard } = require('../keyboards/bookList');
 const logger = require('../../../utils/logger');
+const config = require('../../../config/config');
 
 // Sahifa boshiga nechta kitob ko'rsatish
 const BOOKS_PER_PAGE = 5;
@@ -175,15 +176,67 @@ const handleBookDetails = async (ctx) => {
       message += `ℹ️ Bu kitob hozirda barcha nusxalari band qilingan.\n\n`;
     }
     
-    // Agar kitob rasmi bo'lsa, uni yuborish
-    if (book.imageId) {
-      await ctx.replyWithPhoto(book.imageId, {
-        caption: message,
-        reply_markup: getBookActionsKeyboard(book, isAvailable)
-      });
-    } else {
+    const keyboard = getBookActionsKeyboard(book, isAvailable);
+    
+    try {
+      // Rasmni ko'rsatish usulini tanlash
+      let photoSource = null;
+      let photoError = false;
+      
+      if (book.imageName) {
+        // 1. Avval server orqali rasmni ko'rsatishga urinish
+        const imageUrl = `http://${config.server.host || 'localhost'}:${config.server.port}/images/${book.imageName}`;
+        logger.info(`Trying image from URL: ${imageUrl}`);
+        
+        try {
+          photoSource = { url: imageUrl };
+        } catch (err) {
+          logger.error(`Could not load image URL: ${err.message}`);
+          photoError = true;
+        }
+      } 
+      
+      if (!photoSource && book.imageId) {
+        // 2. Agar server orqali bo'lmasa, Telegram ID orqali ko'rsatishga urinish
+        logger.info(`Trying image from Telegram ID: ${book.imageId}`);
+        
+        try {
+          photoSource = book.imageId;
+        } catch (err) {
+          logger.error(`Could not load Telegram image: ${err.message}`);
+          photoError = true;
+        }
+      }
+      
+      if (!photoSource && !photoError) {
+        // 3. Agar hech qanday rasm yo'q bo'lsa, no-image ko'rsatish
+        const noImageUrl = `http://${config.server.host || 'localhost'}:${config.server.port}/images/no-image.jpg`;
+        logger.info(`No image found, trying to show no-image: ${noImageUrl}`);
+        
+        try {
+          photoSource = { url: noImageUrl };
+        } catch (err) {
+          logger.error(`Could not load no-image: ${err.message}`);
+          photoError = true;
+        }
+      }
+      
+      // Rasmni ko'rsatish
+      if (photoSource && !photoError) {
+        await ctx.replyWithPhoto(photoSource, {
+          caption: message,
+          reply_markup: keyboard
+        });
+      } else {
+        // Agar rasm ko'rsatib bo'lmasa, faqat xabarni yuborish
+        await ctx.reply(message + '\n\n⚠️ Rasmni ko\'rsatishda xatolik yuz berdi.', {
+          reply_markup: keyboard
+        });
+      }
+    } catch (error) {
+      logger.error(`Rasmni ko'rsatishda umumiy xatolik: ${error.message}`);
       await ctx.reply(message, {
-        reply_markup: getBookActionsKeyboard(book, isAvailable)
+        reply_markup: keyboard
       });
     }
   } catch (error) {

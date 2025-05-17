@@ -1,8 +1,9 @@
-// bots/admin-bot/scenes/editBook.js
+// bots/admin-bot/scenes/editBook.js (xato tuzatilgan)
 const { Scenes } = require('telegraf');
 const db = require('../../../database/models');
 const { adminMenuKeyboard } = require('../keyboards/mainMenu');
 const logger = require('../../../utils/logger');
+const { downloadAndSaveTelegramImage, deleteImage } = require('../../../utils/fileStorage');
 
 // Kitob tahrirlash scenesi
 const editBookScene = new Scenes.WizardScene(
@@ -125,8 +126,16 @@ const editBookScene = new Scenes.WizardScene(
           await ctx.answerCbQuery('Rasm o\'chirildi');
           logger.info(`EDITBOOK: Removing image for book "${book.title}"`);
           
+          // Eski rasmni o'chirish
+          if (book.imageName) {
+            await deleteImage(book.imageName);
+          }
+          
           // Kitob rasmini yangilash
-          await book.update({ imageId: null });
+          await book.update({ 
+            imageId: null,
+            imageName: null
+          });
           
           await ctx.reply('Kitob rasmi muvaffaqiyatli o\'chirildi!');
           await ctx.reply('Admin menyu:', { reply_markup: adminMenuKeyboard });
@@ -143,11 +152,23 @@ const editBookScene = new Scenes.WizardScene(
     // Agar rasm tahrirlash bo'lsa va yangi rasm yuborilgan bo'lsa
     if (editType === 'edit_image' && ctx.message && ctx.message.photo) {
       try {
-        const imageId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
-        logger.info(`EDITBOOK: New image received, ID: ${imageId}`);
+        const telegramFileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+        logger.info(`EDITBOOK: New image received, ID: ${telegramFileId}`);
         
-        // Kitob rasmini yangilash
-        await book.update({ imageId: imageId });
+        // Eski rasmni o'chirish
+        if (book.imageName) {
+          await deleteImage(book.imageName);
+        }
+        
+        // Yangi rasmni saqlash - bot obyektini uzatamiz
+        const imageName = await downloadAndSaveTelegramImage(telegramFileId, ctx.telegram);
+        logger.info(`EDITBOOK: Image saved with name: ${imageName}`);
+        
+        // Kitob rasmi ma'lumotlarini yangilash
+        await book.update({ 
+          imageId: telegramFileId,  // Compatibility uchun
+          imageName: imageName      // Yangi field
+        });
         
         await ctx.reply('Kitob rasmi muvaffaqiyatli yangilandi!');
         await ctx.reply('Admin menyu:', { reply_markup: adminMenuKeyboard });

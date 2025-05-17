@@ -1,4 +1,4 @@
-// database/models/Book.js
+// database/models/Book.js (yangilangan)
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -16,10 +16,17 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: false
     },
+    // Telegram fileId o'rniga mahalliy fayl nomini saqlash
+    imageName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Saved local image filename'
+    },
+    // Eski field (compatibility uchun)
     imageId: {
       type: DataTypes.STRING,
       allowNull: true,
-      comment: 'Telegram file ID for the book image'
+      comment: 'Legacy field - Telegram file ID'
     },
     copies: {
       type: DataTypes.INTEGER,
