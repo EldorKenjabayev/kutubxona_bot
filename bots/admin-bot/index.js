@@ -65,7 +65,7 @@ const startAdminBot = async () => {
         // Agar foydalanuvchi admin bo'lmasa, unda xabar berish
         if (!user || !user.isAdmin) {
           logger.warn(`ADMIN BOT: Non-admin user tried to access: ${ctx.from.id}`);
-          return ctx.reply('Bu bot faqat kutubxona adminlari uchun. Iltimos, kutubxona userbot dan foydalaning: @KutubxonaUserBot');
+          return ctx.reply('Bu bot faqat kutubxona adminlari uchun. Iltimos, kutubxona userbot dan foydalaning: @kutuxona_online_www_bot');
         }
         
         logger.info(`ADMIN BOT: Admin user: ${user.firstName} ${user.lastName}`);
