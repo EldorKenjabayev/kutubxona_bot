@@ -1,4 +1,4 @@
-// app.js (yangilangan - bot ishga tushirish qismi olib tashlangan)
+// app.js (cron vazifalarni ishga tushiradigan bo'limni qo'shish)
 require('dotenv').config();
 const express = require('express');
 const morgan = require('morgan');
@@ -76,6 +76,11 @@ const startServer = async () => {
     // Ma'lumotlar bazasini sinxronlash
     await db.sequelize.sync();
     logger.info('Ma\'lumotlar bazasi muvaffaqiyatli sinxronlashtirildi.');
+    
+    // Eslatma jobi ishga tushirish
+    const bookingJobs = require('./jobs/bookingExpirationJob');
+    bookingJobs.startBookingJobs();
+    logger.info('Kitob eslatma va muddat jobi ishga tushirildi');
     
     // HTTP serverni ishga tushirish
     app.listen(PORT, () => {

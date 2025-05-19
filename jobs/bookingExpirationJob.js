@@ -1,4 +1,4 @@
-// jobs/bookingExpirationJob.js - Fixed version
+// jobs/bookingExpirationJob.js - Tuzatilgan versiya
 const cron = require('node-cron');
 const db = require('../database/models');
 const { Op } = require('sequelize');
@@ -54,10 +54,6 @@ const checkExpiredBookings = async () => {
           try {
             const userBot = require('../bots/user-bot').bot;
             
-            // Log the user we're about to notify
-            logger.info(`Notifying user: ${booking.user.telegramId} about expired booking`);
-            
-            // Send notification safely with better error handling
             if (userBot && userBot.telegram) {
               await userBot.telegram.sendMessage(booking.user.telegramId, 
                 `⏰ Band qilish muddati o'tdi!\n\n`
@@ -69,45 +65,30 @@ const checkExpiredBookings = async () => {
               logger.error('User bot not properly initialized for notifications');
             }
             
-            // No-show tracking - Remove this top-level await
-            // Replaced with Promise-based approach
+            // No-show tracking
             const BlackListService = require('../services/blacklistService');
-            BlackListService.getUserViolationCount(booking.user.id, 'not_picked_up')
-              .then(notPickedUpCount => {
-                logger.info(`User ${booking.user.id} has ${notPickedUpCount} not-picked-up violations`);
-                
-                // Add this violation to the record - without top-level await
-                BlackListService.addUserToBlackList(booking.user.id, 'not_picked_up')
-                  .then(() => {
-                    // If this is the 3rd violation, blacklist the user
-                    if (notPickedUpCount >= 2) { // 0-indexed: 0, 1, 2 = 3 violations
-                      logger.warn(`User ${booking.user.id} has reached maximum not-picked-up violations. Blacklisting.`);
-                      
-                      // Add to blacklist with special permanent status
-                      BlackListService.addUserToBlackList(booking.user.id, 'blacklisted_permanent')
-                        .then(() => {
-                          // Notify user about blacklisting
-                          if (userBot && userBot.telegram) {
-                            userBot.telegram.sendMessage(booking.user.telegramId, 
-                              `⛔️ Siz qora ro'yxatga tushirildingiz!\n\n`
-                              + `Siz band qilgan kitoblaringizni muntazam ravishda olmay qo'yganingiz sababli, botdan foydalanish huquqidan mahrum bo'ldingiz.\n\n`
-                              + `Iltimos, kutubxona administratoriga murojaat qiling.`
-                            );
-                          }
-                        })
-                        .catch(error => {
-                          logger.error(`Error blacklisting user: ${error.message}`);
-                        });
-                    }
-                  })
-                  .catch(error => {
-                    logger.error(`Error adding violation record: ${error.message}`);
-                  });
-              })
-              .catch(error => {
-                logger.error(`Error getting violation count: ${error.message}`);
-              });
+            const notPickedUpCount = await BlackListService.getUserViolationCount(booking.user.id, 'not_picked_up');
+            logger.info(`User ${booking.user.id} has ${notPickedUpCount} not-picked-up violations`);
             
+            // Add this violation to the record
+            await BlackListService.addUserToBlackList(booking.user.id, 'not_picked_up');
+            
+            // If this is the 3rd violation, blacklist the user
+            if (notPickedUpCount >= 2) { // 0-indexed: 0, 1, 2 = 3 violations
+              logger.warn(`User ${booking.user.id} has reached maximum not-picked-up violations. Blacklisting.`);
+              
+              // Add to blacklist with special permanent status
+              await BlackListService.addUserToBlackList(booking.user.id, 'blacklisted_permanent');
+              
+              // Notify user about blacklisting
+              if (userBot && userBot.telegram) {
+                await userBot.telegram.sendMessage(booking.user.telegramId, 
+                  `⛔️ Siz qora ro'yxatga tushirildingiz!\n\n`
+                  + `Siz band qilgan kitoblaringizni muntazam ravishda olmay qo'yganingiz sababli, botdan foydalanish huquqidan mahrum bo'ldingiz.\n\n`
+                  + `Iltimos, kutubxona administratoriga murojaat qiling.`
+                );
+              }
+            }
           } catch (notifyError) {
             logger.error(`Foydalanuvchiga xabar yuborishda xatolik: ${notifyError.message}`);
           }
@@ -138,6 +119,8 @@ const sendReturnReminders = async () => {
     const reminderDate = new Date();
     reminderDate.setDate(today.getDate() + config.booking.reminderBeforeDays);
     
+    logger.info(`Bugungi sana: ${today.toISOString()}, Eslatma chegarasi: ${reminderDate.toISOString()}`);
+    
     // Qaytarish vaqti yaqinlashgan band qilishlarni olish
     const dueBookings = await db.Booking.findAll({
       where: {
@@ -146,10 +129,7 @@ const sendReturnReminders = async () => {
           [Op.gte]: today,
           [Op.lt]: reminderDate
         },
-        // Eslatma yuborilmagan
-        reminderSent: {
-          [Op.ne]: true
-        }
+        reminderSent: false // MUHIM O'ZGARTIRISH: reminderSent Booking modelida
       },
       include: [
         { model: db.User, as: 'user' },
@@ -178,11 +158,11 @@ const sendReturnReminders = async () => {
               + `Bu muddat ${config.booking.reminderBeforeDays} kundan keyin tugaydi.\n\n`
               + `Iltimos, kitobni o'z vaqtida qaytaring.`
             );
+            
+            logger.info(`Booking #${booking.id} - "${booking.book.title}" uchun qaytarish eslatmasi yuborildi.`);
           } else {
             logger.error('User bot not properly initialized for sending reminders');
           }
-          
-          logger.info(`Booking #${booking.id} - "${booking.book.title}" uchun qaytarish eslatmasi yuborildi.`);
         } catch (error) {
           logger.error(`Eslatma yuborishda xatolik: ${error.message}`);
         }
@@ -218,7 +198,6 @@ const startBookingJobs = () => {
   logger.info('Band qilish bilan bog\'liq jobs muvaffaqiyatli ishga tushdi.');
 };
 
-// Export functions without using top-level await
 module.exports = { 
   startBookingJobs, 
   checkExpiredBookings, 

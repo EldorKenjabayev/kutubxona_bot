@@ -1,4 +1,4 @@
-// database/models/Book.js (yangilangan)
+// database/models/Book.js (o'zgartirilgan versiya - reminderSent o'chirildi)
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -34,12 +34,7 @@ module.exports = (sequelize) => {
       defaultValue: 1,
       comment: 'Number of available copies'
     },
-    // Check if this field exists, if not add it
-    reminderSent: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
-      comment: 'Eslatma yuborilganmi'
-    },
+    // reminderSent maydoni olib tashlandi - bu maydon Booking modeliga ko'chirildi
     availableCopies: {
       type: DataTypes.INTEGER,
       comment: 'Number of copies currently available'

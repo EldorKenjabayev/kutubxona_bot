@@ -1,4 +1,4 @@
-// database/models/Booking.js
+// database/models/Booking.js - Tuzatilgan versiya
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -58,6 +58,11 @@ module.exports = (sequelize) => {
       allowNull: false,
       defaultValue: 7,
       comment: 'Duration in days for which the book is booked'
+    },
+    reminderSent: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment: 'Whether a reminder has been sent for this booking'
     }
   }, {
     tableName: 'bookings',

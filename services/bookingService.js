@@ -106,7 +106,8 @@ class BookingService {
         bookedAt: now,
         expiresAt,
         returnDate,
-        durationDays
+        durationDays,
+        reminderSent: false // Eslatma yuborilmagani aniq belgilanmoqda
       }, { transaction });
       
       // Kitobning mavjud nusxalar sonini kamaytirish
@@ -207,7 +208,8 @@ class BookingService {
       await booking.update({
         status: 'taken',
         takenAt: now,
-        returnDate: addDays(now, booking.durationDays)
+        returnDate: addDays(now, booking.durationDays),
+        reminderSent: false // Qaytarish eslatmasi yuborilmagan
       }, { transaction });
       
       await transaction.commit();
@@ -342,9 +344,13 @@ class BookingService {
     try {
       // Bugungi kun
       const today = new Date();
+      today.setHours(0, 0, 0, 0); // Bugun sananing boshlanish vaqti
       
       // Eslatma uchun qaytarish muddati 
       const reminderDate = addDays(today, daysBeforeReturn);
+      reminderDate.setHours(23, 59, 59, 999); // Eslatma sananing so'nggi vaqti
+      
+      logger.info(`Qaytarish eslatmalari uchun sana oralig'i: ${today.toISOString()} dan ${reminderDate.toISOString()} gacha`);
       
       // Qaytarish vaqti yaqinlashgan band qilishlarni olish
       const dueBookings = await db.Booking.findAll({
@@ -355,15 +361,15 @@ class BookingService {
             [Op.lt]: reminderDate
           },
           // Eslatma yuborilmagan
-          reminderSent: {
-            [Op.ne]: true
-          }
+          reminderSent: false
         },
         include: [
           { model: db.User, as: 'user' },
           { model: db.Book, as: 'book' }
         ]
       });
+      
+      logger.info(`Qaytarish eslatmalari uchun ${dueBookings.length} ta band qilish topildi`);
       
       return dueBookings;
     } catch (error) {
@@ -375,17 +381,17 @@ class BookingService {
   /**
    * Eslatma yuborilganligini belgilash
    * @param {Number} bookingId - Band qilish ID si
-   * @returns {Promise<Boolean>} Yuborish natijasi
+   * @returns {Promise<Boolean>} - Yuborish natijasi
    */
   static async markReminderSent(bookingId) {
     try {
-      await db.Booking.update(
+      const result = await db.Booking.update(
         { reminderSent: true },
         { where: { id: bookingId } }
       );
       
-      logger.info(`Band qilish ID: ${bookingId} uchun eslatma yuborilgani belgilandi`);
-      return true;
+      logger.info(`Band qilish ID: ${bookingId} uchun eslatma yuborilgani belgilandi (${result[0]} qator yangilandi)`);
+      return result[0] > 0;
     } catch (error) {
       logger.error(`Eslatma yuborilganligini belgilashda xatolik: ${error.message}`);
       throw error;
